@@ -2,10 +2,9 @@ import streamlit as st
 import geopandas as gpd
 import folium
 from streamlit_folium import folium_static
-from folium.plugins import MarkerCluster
 
 # Streamlit app layout
-st.title("Dynamic Map from Shapefile")
+st.title("Filter Shapefile for Lewisham")
 
 # Upload shapefile
 uploaded_file = st.file_uploader("Upload your shapefile (.shp, .shx, .dbf, .prj as a .zip file)", type=["zip"])
@@ -22,32 +21,37 @@ if uploaded_file is not None:
     # Load the shapefile using geopandas
     try:
         gdf = gpd.read_file("shapefile")
-        st.write("Shapefile successfully loaded!")
 
-        # Convert to WGS84 (lat/lon) if needed
-        if gdf.crs and gdf.crs.to_string() != "EPSG:4326":
-            gdf = gdf.to_crs(epsg=4326)
+        # Ensure the column exists
+        if 'LAD11NM' not in gdf.columns:
+            st.error("Column 'LAD11NM' not found in shapefile.")
+        else:
+            # Filter for records where LAD11NM contains 'lewisham' (case insensitive)
+            filtered_gdf = gdf[gdf['LAD11NM'].str.contains('lewisham', case=False, na=False)]
 
-        # Preview data
-        st.write(gdf.head())
+            if filtered_gdf.empty:
+                st.warning("No records found for 'Lewisham'.")
+            else:
+                st.write(f"Filtered {len(filtered_gdf)} areas with 'Lewisham' in LAD11NM")
 
-        # Create a folium map
-        center = gdf.geometry.centroid.iloc[0].y, gdf.geometry.centroid.iloc[0].x
-        m = folium.Map(location=center, zoom_start=10)
+                # Convert CRS to WGS84 (latitude/longitude)
+                if filtered_gdf.crs and filtered_gdf.crs.to_string() != "EPSG:4326":
+                    filtered_gdf = filtered_gdf.to_crs(epsg=4326)
 
-        # Add data to map
-        folium.GeoJson(gdf, name="Shapefile Layer").add_to(m)
+                # Display the filtered data
+                st.write(filtered_gdf[['LAD11NM']].head())
 
-        # Optionally add markers for centroids
-        marker_cluster = MarkerCluster().add_to(m)
-        for _, row in gdf.iterrows():
-            centroid = row.geometry.centroid
-            folium.Marker([centroid.y, centroid.x], popup=row.get('name', 'No Name')).add_to(marker_cluster)
+                # Create a folium map centered on the filtered area
+                center = filtered_gdf.geometry.centroid.iloc[0].y, filtered_gdf.geometry.centroid.iloc[0].x
+                m = folium.Map(location=center, zoom_start=12)
 
-        # Display map in Streamlit
-        folium_static(m)
+                # Add filtered polygons to the map
+                folium.GeoJson(filtered_gdf, name="Filtered Areas").add_to(m)
+
+                # Display the map
+                folium_static(m)
 
     except Exception as e:
         st.error(f"Error loading shapefile: {e}")
 
-st.write("Upload a shapefile (zipped) to visualize it on the map.")
+st.write("Upload a shapefile (zipped) to visualize filtered areas.")
